@@ -455,7 +455,7 @@ static int cur_fetch (lua_State *L) {
 
 
 /*
-** The iterator of cursur
+** The iterator of cursor
 */
 static int cur_iterator (lua_State *L) {
 	int i;
@@ -469,7 +469,7 @@ static int cur_iterator (lua_State *L) {
 
 
 /*
-** Return the iterator of curser
+** Return the iterator of cursor
 */
 static int cur_getiter (lua_State *L) {
 	cur_data *cur = getcursor(L);
