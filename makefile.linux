@@ -1,0 +1,37 @@
+LUA_INCDIR = $(HOME)/include
+LUA_LIBDIR = $(HOME)/lib
+LUASQL_LIBDIR = $(HOME)/lib/lua/luasql
+
+INFORMIX_INCS = -I$(INFORMIXDIR)/incl/esql
+INFORMIX_LIBS = -L$(INFORMIXDIR)/lib/esql -L$(INFORMIXDIR)/lib -lifsql -lifasf -lifgen -lifos -lifgls -lifglx $(INFORMIXDIR)/lib/esql/checkapi.o
+
+LUA_INCS = -I$(LUA_INCDIR)
+LUA_LIBS = -L$(LUA_LIBDIR) -llua
+
+DRIVER_INCS = $(INFORMIX_INCS) $(LUA_INCS)
+DRIVER_LIBS = $(INFORMIX_LIBS) $(LUA_LIBS) -lc -lcrypt
+
+LIB_OPTION = -m32 -shared -fPIC
+WARN = 
+CFLAGS = -m32 -g -DLUA_USE_POSIX -DLUA_USE_DLOPEN $(WARN) $(DRIVER_INCS)
+CC= gcc
+
+OBJS = luasql.o
+SRCS = luasql.h luasql.c
+
+all : informix
+informix : informix.so
+
+# builds the specified driver
+informix.so : ls_informix.c $(OBJS) 
+	$(CC) $(CFLAGS) ls_informix.c -o $@ $(LIB_OPTION) $(OBJS) $(DRIVER_INCS) $(DRIVER_LIBS)
+
+# builds the general LuaSQL functions
+$(OBJS) : $(SRCS)
+	$(CC) $(CFLAGS) -c luasql.c -o luasql.o
+
+install:
+	cp -f *.so $(LUASQL_LIBDIR)
+
+clean:
+	rm -f *.so *.o
