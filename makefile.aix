@@ -6,12 +6,12 @@ INFORMIX_INCS = -I$(INFORMIXDIR)/incl/esql
 INFORMIX_LIBS = -L$(INFORMIXDIR)/lib/esql -L$(INFORMIXDIR)/lib -lifsql -lifasf -lifgen -lifos -lifgls -lifglx $(INFORMIXDIR)/lib/esql/checkapi.o
 
 LUA_INCS = -I$(LUA_INCDIR)
-LUA_LIBS = -L$(LUA_LIBDIR) -llua
+LUA_LIBS = -L$(LUA_LIBDIR)
 
 DRIVER_INCS = $(INFORMIX_INCS) $(LUA_INCS)
 DRIVER_LIBS = $(INFORMIX_LIBS) $(LUA_LIBS)
 
-LIB_OPTION = -G -brtl -bexpall
+LIB_OPTION = -G -brtl -bexpfull
 WARN = 
 CFLAGS = -O2 -g -D_H_LOCALEDEF -DAIX -DLUA_USE_POSIX -DLUA_USE_DLOPEN $(WARN) $(DRIVER_INCS)
 CC= xlc

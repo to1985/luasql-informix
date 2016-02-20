@@ -152,8 +152,8 @@ static void pushvalue (lua_State *L, int2 *ind, int type, char *data, long len) 
 		case CVCHARTYPE:
 		case CSTRINGTYPE:
 			i=stleng(data);
-			while ((data[i] == '\0') || (data[i] == ' ')) i--;
-			data[i+1] = '\0';
+			while (((data[i - 1] == '\0') || (data[i - 1] == ' ')) && (i > 0)) i--;
+			data[i] = '\0';
 			lua_pushstring(L, data);
 			return;
 		case CSHORTTYPE:
@@ -233,10 +233,11 @@ static void pushvalue (lua_State *L, int2 *ind, int type, char *data, long len) 
 */
 static void pusherrmsg (lua_State *L, ifx_sqlca_t *p_sqlca, char *hint) {
 	if (p_sqlca->sqlcode == 0) {
-		lua_pushfstring(L, "%s operate success", hint);
+		lua_pushnil(L);
 	}
 	else {
-		lua_pushfstring(L, "%s CODE:%d ISAM:%d MSG:%s", hint, p_sqlca->sqlcode, p_sqlca->sqlerrd[1], p_sqlca->sqlerrm);
+		lua_pushfstring(L, "%s fail, CODE:%d ISAM:%d MSG:%s",
+			hint, p_sqlca->sqlcode, p_sqlca->sqlerrd[1], p_sqlca->sqlerrm);
 	}
 }
 
@@ -415,21 +416,20 @@ static int cur_fetch (lua_State *L) {
 		if (conn->conn_sqlca.sqlcode == 100) {
 			return 1;
 		}
-		pusherrmsg(L, &(conn->conn_sqlca), "fetch cursor err");
+		pusherrmsg(L, &(conn->conn_sqlca), "fetch cursor");
 		return 2;
 	}
 
 	if (lua_istable (L, 2)) {
 		const char *opts = luaL_optstring(L, 3, "n");
 
-		lua_newtable(L);
 		if (strchr (opts, 'n') != NULL) {
 			/* Copy values to numerical indices */
 			int i;
 
 			for (i = 0, sqlvar = cur->cur_sqlda->sqlvar; i < cur->cur_sqlda->sqld; i++, sqlvar++) {
 				pushvalue(L, sqlvar->sqlind, sqlvar->sqltype, sqlvar->sqldata, sqlvar->sqllen);
-				lua_rawseti(L, -2, i+1);
+				lua_rawseti(L, 2, i+1);
 			}
 		}
 		if (strchr (opts, 'a') != NULL) {
@@ -438,9 +438,10 @@ static int cur_fetch (lua_State *L) {
 			for (i = 0, sqlvar = cur->cur_sqlda->sqlvar; i < cur->cur_sqlda->sqld; i++, sqlvar++) {
 				lua_pushstring(L, sqlvar->sqlname);
 				pushvalue(L, sqlvar->sqlind, sqlvar->sqltype, sqlvar->sqldata, sqlvar->sqllen);
-				lua_rawset(L, -3);
+				lua_rawset(L, 2);
 			}
 		}
+		lua_pushvalue(L, 2);
 		return 1; /* return table */
 	}
 	else {
@@ -708,7 +709,7 @@ static int conn_execute (lua_State *L) {
 	memcpy(&(conn->conn_sqlca),&sqlca,sizeof(ifx_sqlca_t));
 	if (sqlca.sqlcode != 0) {
 		lua_pushnil(L);
-		pusherrmsg(L, &(conn->conn_sqlca), "prepare sql err");
+		pusherrmsg(L, &(conn->conn_sqlca), "prepare sql");
 		return 2;
 	}
 
@@ -728,7 +729,7 @@ static int conn_execute (lua_State *L) {
 			lua_pushinteger(L, sqlca.sqlerrd[2]);
 		}
 		sqli_curs_free(ESQLINTVERSION, pStmt);
-		pusherrmsg(L, &(conn->conn_sqlca), "execute sql err");
+		pusherrmsg(L, &(conn->conn_sqlca), "execute sql");
 		return 2;
 	}
 	else { /* return tuples */
@@ -743,7 +744,7 @@ static int conn_execute (lua_State *L) {
 			free(sqlda);
 			sqli_curs_free(ESQLINTVERSION, pStmt);
 			lua_pushnil(L);
-			pusherrmsg(L, &sqlca, "alloc fetch buf err");
+			lua_pushstring(L, "alloc fetch buffer fail");
 			return 2;
 		}
 
@@ -756,7 +757,7 @@ static int conn_execute (lua_State *L) {
 			free(sqlda);
 			sqli_curs_free(ESQLINTVERSION, pStmt);
 			lua_pushnil(L);
-			pusherrmsg(L, &(conn->conn_sqlca), "declare cursor err");
+			pusherrmsg(L, &(conn->conn_sqlca), "declare cursor");
 			return 2;
 		}
 		sqli_curs_free(ESQLINTVERSION, pStmt);
@@ -771,7 +772,7 @@ static int conn_execute (lua_State *L) {
 			free(sqlda);
 			sqli_curs_free(ESQLINTVERSION, sqli_curs_locate(ESQLINTVERSION, curid, 770));
 			lua_pushnil(L);
-			pusherrmsg(L, &(conn->conn_sqlca), "open cursor err");
+			pusherrmsg(L, &(conn->conn_sqlca), "open cursor");
 			return 2;
 		}
 
@@ -790,7 +791,7 @@ static int conn_transbegin (lua_State *L) {
 	memcpy(&(conn->conn_sqlca),&sqlca,sizeof(ifx_sqlca_t));
 	if (sqlca.sqlcode != 0) {
 		lua_pushboolean(L, 0);
-		pusherrmsg(L, &(conn->conn_sqlca), "begin transaction err");
+		pusherrmsg(L, &(conn->conn_sqlca), "begin transaction");
 		return 2;
 	}
 	conn->auto_commit = 0;
@@ -815,7 +816,7 @@ static int conn_commit (lua_State *L) {
 	memcpy(&(conn->conn_sqlca), &sqlca, sizeof(ifx_sqlca_t));
 	if (sqlca.sqlcode != 0) {
 		lua_pushboolean(L, 0);
-		pusherrmsg(L, &(conn->conn_sqlca), "commit transaction err");
+		pusherrmsg(L, &(conn->conn_sqlca), "commit transaction");
 		return 2;
 	}
 	if (conn->auto_begin == 1) {
@@ -823,7 +824,7 @@ static int conn_commit (lua_State *L) {
 		if (sqlca.sqlcode != 0) {
 			memcpy(&(conn->conn_sqlca),&sqlca,sizeof(ifx_sqlca_t));
 			lua_pushboolean(L, 0);
-			pusherrmsg(L, &(conn->conn_sqlca), "begin transaction err");
+			pusherrmsg(L, &(conn->conn_sqlca), "begin transaction");
 			return 2;
 		}
 	}
@@ -840,7 +841,7 @@ static int conn_rollback (lua_State *L) {
 
 	if (conn->auto_commit == 1) {
 		lua_pushboolean(L, 0);
-		lua_pushstring(L, "err, auto commit mode");
+		lua_pushstring(L, "rollback transaction fail, auto commit mode");
 		return 2;
 	}
 	set_conn(L, conn);
@@ -848,7 +849,7 @@ static int conn_rollback (lua_State *L) {
 	memcpy(&(conn->conn_sqlca), &sqlca, sizeof(ifx_sqlca_t));
 	if (sqlca.sqlcode != 0) {
 		lua_pushboolean(L, 0);
-		pusherrmsg(L, &(conn->conn_sqlca), "rollback transaction err");
+		pusherrmsg(L, &(conn->conn_sqlca), "rollback transaction");
 		return 2;
 	}
 	if (conn->auto_begin == 1) {
@@ -856,7 +857,7 @@ static int conn_rollback (lua_State *L) {
 		if (sqlca.sqlcode != 0) {
 			memcpy(&(conn->conn_sqlca),&sqlca,sizeof(ifx_sqlca_t));
 			lua_pushboolean(L, 0);
-			pusherrmsg(L, &(conn->conn_sqlca), "begin transaction err");
+			pusherrmsg(L, &(conn->conn_sqlca), "begin transaction");
 			return 2;
 		}
 	}
@@ -889,7 +890,7 @@ static int conn_setautocommit (lua_State *L)
 		memcpy(&(conn->conn_sqlca),&sqlca,sizeof(ifx_sqlca_t));
 		if (sqlca.sqlcode != 0) {
 			lua_pushboolean(L, 0);
-			pusherrmsg(L, &(conn->conn_sqlca), "begin transaction err");
+			pusherrmsg(L, &(conn->conn_sqlca), "begin transaction");
 			return 2;
 		}
 		else {
@@ -933,7 +934,7 @@ static int conn_getresult (lua_State *L) {
 	lua_pushstring(L, conn->conn_sqlca.sqlerrm);
 	lua_rawset(L, -3);
 	lua_pushstring(L, "err_msg");
-	lua_pushfstring(L, " CODE:%d ISAM:%d MSG:%s",
+	lua_pushfstring(L, "CODE:%d ISAM:%d MSG:%s",
 		conn->conn_sqlca.sqlcode, conn->conn_sqlca.sqlerrd[1], conn->conn_sqlca.sqlerrm);
 	lua_rawset(L, -3);
 
@@ -972,7 +973,54 @@ static int escape_string (lua_State *L) {
 		free(res);
 		return 1;
 	}
-	return luasql_faildirect(L, "alloc memory err");
+	return luasql_faildirect(L, "alloc memory fail");
+}
+
+
+/*
+** Convert date string to internal date format
+*/
+static int datetoint (lua_State *L) {
+	int4 dt;
+	char *datestr = (char *)luaL_checkstring(L, 2);
+	char *datefmt = (char *)luaL_optstring(L, 3, NULL);
+
+	if (datefmt == NULL) {
+		if (rstrdate(datestr, &dt) != 0) {
+			return luasql_faildirect(L, "date convert fail");
+		}
+	}
+	else {
+		if (rdefmtdate(&dt, datefmt, datestr) != 0) {
+			return luasql_faildirect(L, "date convert fail");
+		}
+	}
+	lua_pushinteger(L, dt);
+	return 1;
+}
+
+
+/*
+** Convert internal date to date string
+*/
+static int inttodate (lua_State *L) {
+	int4 dt = luaL_checkinteger(L, 2);
+	char *datefmt = (char *)luaL_optstring(L, 3, NULL);
+	char datestr[256];
+
+	memset(datestr, 0, sizeof(datestr));
+	if (datefmt == NULL) {
+		if (rdatestr(dt, datestr) != 0) {
+			return luasql_faildirect(L, "date convert fail");
+		}
+	}
+	else {
+		if (rfmtdate(dt, datefmt, datestr) != 0) {
+			return luasql_faildirect(L, "date convert fail");
+		}
+	}
+	lua_pushstring(L, datestr);
+	return 1;
 }
 
 
@@ -1011,7 +1059,7 @@ static int env_connect (lua_State *L) {
 	ifx_conn_t *_sqiconn;
 
 	if (set_env(env) != 0) {
-		return luasql_faildirect(L, "set informix server environment err.");
+		return luasql_faildirect(L, "set informix server environment fail");
 	}
 	env->conn_cnt++;
 	snprintf(connid, sizeof(connid), "C_%lX_%d", env, env->conn_cnt);
@@ -1028,14 +1076,15 @@ static int env_connect (lua_State *L) {
 	}
 	if (sqlca.sqlcode != 0) {
 		lua_pushnil(L);
-		pusherrmsg(L, &sqlca, "connect db err");
+		pusherrmsg(L, &sqlca, "connect db");
 		return 2;
 	}
 	if (restore_env(env) != 0) {
-		return luasql_faildirect(L, "set informix server environment err.");
+		return luasql_faildirect(L, "set informix server environment fail");
 	}
 	return create_connection(L, 1, connid);
 }
+
 
 /*
 **	disconnect from server
@@ -1083,35 +1132,37 @@ static int env_close (lua_State *L) {
 ** Create metatables for each class of object.
 */
 static void create_metatables (lua_State *L) {
-    struct luaL_Reg environment_methods[] = {
-        {"__gc", env_gc},
-        {"close", env_close},
-        {"connect", env_connect},
+	struct luaL_Reg environment_methods[] = {
+		{"__gc", env_gc},
+		{"close", env_close},
+		{"connect", env_connect},
 		{NULL, NULL},
 	};
-    struct luaL_Reg connection_methods[] = {
-        {"__gc", conn_gc},
-        {"close", conn_close},
-        {"execute", conn_execute},
-        {"transbegin", conn_transbegin},
-        {"commit", conn_commit},
-        {"rollback", conn_rollback},
+	struct luaL_Reg connection_methods[] = {
+		{"__gc", conn_gc},
+		{"close", conn_close},
+		{"execute", conn_execute},
+		{"transbegin", conn_transbegin},
+		{"commit", conn_commit},
+		{"rollback", conn_rollback},
 		{"setautocommit", conn_setautocommit},
-        {"getlastserial", conn_getlastserialvalue},
-        {"getresult", conn_getresult},
+		{"getlastserial", conn_getlastserialvalue},
+		{"getresult", conn_getresult},
 		{"escape", escape_string},
+		{"datetoint", datetoint},
+		{"inttodate", inttodate},
 		{NULL, NULL},
-    };
-    struct luaL_Reg cursor_methods[] = {
-        {"__gc", cur_gc},
-        {"close", cur_close},
-        {"getcolnames", cur_getcolnames},
-        {"getcoltypes", cur_getcoltypes},
-        {"getfldnum", cur_getfieldnum},
-        {"fetch", cur_fetch},
-        {"iterator", cur_getiter},
+	};
+	struct luaL_Reg cursor_methods[] = {
+		{"__gc", cur_gc},
+		{"close", cur_close},
+		{"getcolnames", cur_getcolnames},
+		{"getcoltypes", cur_getcoltypes},
+		{"getfldnum", cur_getfieldnum},
+		{"fetch", cur_fetch},
+		{"iterator", cur_getiter},
 		{NULL, NULL},
-    };
+	};
 	luasql_createmeta(L, LUASQL_ENVIRONMENT_INFORMIX, environment_methods);
 	luasql_createmeta(L, LUASQL_CONNECTION_INFORMIX, connection_methods);
 	luasql_createmeta(L, LUASQL_CURSOR_INFORMIX, cursor_methods);
